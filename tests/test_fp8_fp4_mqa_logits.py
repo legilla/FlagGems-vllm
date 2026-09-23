@@ -59,6 +59,35 @@ elif _vendor == "nvidia":
 
     _ref_dense_mqa = _ref_fp8_fp4_mqa_logits
 
+elif _vendor == "hygon":
+    try:
+        from lightop.attention import mqa_logits as _ref_mqa_logits
+    except ImportError:
+        _skip_ref = "requires lightop native mqa_logits"
+
+    def _ref_dense_mqa(q, kv, weights, cu_seqlen_ks, cu_seqlen_ke, clean_logits):
+        k_fp8, k_scale = kv
+        # gfx936: LightOp's fp8 dense path has no binary image for this arch
+        # (silently returns zeros); its paged wrapper does the same fp8->bf16
+        # conversion. Dequantize into bf16 and pad D_out like production.
+        q_bf16 = q[0].to(torch.bfloat16)
+        k_bf16 = (k_fp8.to(torch.float32) * k_scale.unsqueeze(1)).to(torch.bfloat16)
+        m, n = q_bf16.shape[0], k_bf16.shape[0]
+        m_pad = (m + 127) // 128 * 128
+        n_pad = (n + 127) // 128 * 128
+        d_out = torch.zeros((m_pad, n_pad), dtype=torch.float32, device=q_bf16.device)
+        _ref_mqa_logits(
+            q_bf16,
+            k_bf16,
+            weights.float().contiguous(),
+            cu_seqlen_ks,
+            cu_seqlen_ke,
+            kv_scale=None,
+            clean_logit=clean_logits,
+            D_out=d_out,
+        )
+        return d_out[:m, :n]
+
 else:
     _skip_arch = f"unsupported vendor: {_vendor}"
     _skip_ref = f"unsupported vendor: {_vendor}"

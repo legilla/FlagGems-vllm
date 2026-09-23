@@ -34,7 +34,7 @@ if _vendor == "nvidia":
     def per_custom_dims_cast_to_fp8(x, dims, use_ue8m0=False):
         return _per_custom_dims_cast_to_fp8(x, dims, use_ue8m0)
 
-elif _vendor == "mthreads":
+elif _vendor in ("mthreads", "hygon"):
     import math
 
     def _align(x, y):

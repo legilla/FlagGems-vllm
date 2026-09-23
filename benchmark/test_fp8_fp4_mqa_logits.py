@@ -50,7 +50,7 @@ if _vendor == "nvidia":
             _fp4_supported = False
     except Exception:
         pass
-elif _vendor == "mthreads":
+else:
     _fp4_supported = False
 
 

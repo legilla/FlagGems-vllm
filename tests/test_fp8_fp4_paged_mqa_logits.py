@@ -44,7 +44,7 @@ if _vendor == "mthreads":
         clean_logits,
     ):
         return _ref_fp8_paged_mqa_logits(
-            q=q[0] if isinstance(q, tuple) else q,
+            q=q[0],
             fused_kv_cache=kv_cache,
             weights=weights,
             context_lens=context_lens,
@@ -66,6 +66,85 @@ elif _vendor == "nvidia":
         _skip_ref = "requires vLLM with DeepGEMM and FP8 quantization support"
 
     _ref_paged_mqa = _ref_fp8_fp4_paged_mqa_logits
+
+elif _vendor == "hygon":
+    try:
+        from lightop.attention import get_paged_mqa_logits_metadata as _ref_meta_native
+        from lightop.attention import paged_mqa_logits as _ref_paged_native
+    except ImportError:
+        _skip_ref = "requires lightop native paged mqa logits"
+
+    def _ref_get_metadata(context_lens, block_size, num_sms):
+        # LightOp/vLLM contract: metadata takes per-batch context [B].
+        # For [B, next_n] take column 0 (all n share the same base ctx);
+        # reshape(-1) would yield B*next_n and corrupt scheduling at next_n=2.
+        ctx = context_lens
+        if ctx.dim() == 2:
+            ctx = ctx[:, 0]
+        return _ref_meta_native(ctx.contiguous().to(torch.int32), block_size, num_sms)
+
+    def _ref_paged_mqa(
+        q,
+        kv_cache,
+        weights,
+        context_lens,
+        block_tables,
+        schedule_metadata,
+        max_model_len,
+        clean_logits,
+    ):
+        q_values = q[0]
+        if q_values.dim() == 3:
+            q_values = q_values.unsqueeze(1)
+        next_n = q_values.shape[1]
+        if next_n == 1:
+            # next_n=1: batched native path is validated by all N1 cases
+            return _ref_paged_native(
+                q_values,
+                kv_cache,
+                weights,
+                context_lens,
+                block_tables,
+                schedule_metadata,
+                max_model_len,
+                clean_logits,
+            )
+        # next_n>1: LightOp's batched kernel corrupts the row context/page
+        # mapping (emits inf inside valid windows, probe diff=nan);
+        # validated workaround: native per-row calls with b_idx = row // next_n
+        # (probe calc_diff=1.09e-13 vs the Triton kernel).
+        bsz = q_values.shape[0]
+        head_dim_last = q_values.shape[3]
+        total_rows = bsz * next_n
+        q_rows = q_values.reshape(total_rows, q_values.shape[2], head_dim_last)
+        if context_lens.dim() == 2:
+            ctx_rows = context_lens.reshape(-1)[:total_rows]
+        else:
+            ctx_rows = context_lens.repeat_interleave(next_n)
+        ctx_rows = ctx_rows.contiguous().to(torch.int32)
+        ref_out = torch.zeros(
+            total_rows,
+            max_model_len,
+            device=q_values.device,
+            dtype=torch.float32,
+        )
+        for row in range(total_rows):
+            ctx = int(ctx_rows[row].item())
+            if ctx == 0:
+                continue
+            b_idx = row // next_n
+            row_out = _ref_paged_native(
+                q_rows[row].view(1, 1, q_values.shape[2], head_dim_last),
+                kv_cache,
+                weights[row : row + 1].float().contiguous(),
+                torch.tensor([ctx], dtype=torch.int32, device=q_values.device),
+                block_tables[b_idx : b_idx + 1],
+                None,
+                max_model_len,
+                clean_logits,
+            )
+            ref_out[row, :ctx] = row_out[0, :ctx]
+        return ref_out
 
 else:
     _skip_arch = f"unsupported vendor: {_vendor}"
