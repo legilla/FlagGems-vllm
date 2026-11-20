@@ -61,7 +61,18 @@ nvidia = [
     "vllm @ https://files.pythonhosted.org/packages/a5/0d/0b15fda9a56ac485ebb607e466f0e3386c8c115bafeced6514298bd325b5/vllm-0.32.0-cp38-abi3-manylinux_2_28_x86_64.whl",
 ]
 ascend = [
-    "vllm-ascend==0.32.0rc1",
+    # vllm-ascend declares no vllm requirement and the Ascend images ship none.
+    # The pure-python build carries no compiled extension, so it is not tied to
+    # one interpreter the way the cpXXX builds are.
+    "vllm @ https://resource.flagos.net/repository/flagos-pypi-ascend/packages/vllm/0.32.0+flagos/vllm-0.32.0+flagos-py3-none-any.whl#sha256=ebc27da5c179ac6132ce81e289483852445aaf6ae827fa272c0eef15c514249f",
+    "vllm-ascend",
+    # Flattened the deps of vllm into the direct deps since they should be
+    # resolved from specific repos, and there are no tools to resolve them.
+    "opencv-python-headless @ https://resource.flagos.net/repository/flagos-pypi-ascend/packages/opencv-python-headless/5.0.0.93+flagos/opencv_python_headless-5.0.0.93+flagos-cp37-abi3-manylinux_2_28_aarch64.whl#sha256=d3c5c9e8dae4f215882e7c6f5ad8d9ac1047c586a39f5907755867c211db8a78",
+    "compressed-tensors @ https://resource.flagos.net/repository/flagos-pypi-ascend/packages/compressed-tensors/0.17.0+flagos/compressed_tensors-0.17.0+flagos-py3-none-any.whl#sha256=42eb84cf77034f6bcb258681b93eebbb6037b6946198879f6a223dc5b2d15440",
+    # vllm-ascend pulls pandas unpinned; the Ascend images pin NumPy 1.26.4 and
+    # pandas 3 is built against the NumPy 2 C-API.
+    "pandas<3",
 ]
 iluvatar = [
     "vllm @ https://resource.flagos.net/repository/flagos-pypi-iluvatar/packages/vllm/0.24.0+flagos/vllm-0.24.0+flagos-cp312-cp312-linux_x86_64.whl#sha256=ca0450ff49eecb2c2954edd6e2350fb4a5bbe63f1512b6160aac8a798440010c",
@@ -104,6 +115,7 @@ thead = [
 exclude-dependencies = [
     # Image-provided runtimes that must not be replaced.
     "numpy", "triton", "triton-ascend", "flagtree", "torch-npu",
+    "torch", "torchvision", "torchaudio",
     # CUDA runtime pulled by the upstream vLLM wheel (nvidia extra).
     "cuda-bindings", "cuda-core", "cuda-python", "cuda-tile", "cuda-toolkit",
     "nvidia-cuda-cccl", "nvidia-cuda-crt", "nvidia-cuda-nvcc", "nvidia-cuda-nvrtc",
@@ -113,13 +125,18 @@ exclude-dependencies = [
     # Transitive pins of the plugin wheels: letting them resolve downgrades the
     # base image, including the "+flagos" rebuilds only the vendor images ship.
     "transformers", "tokenizers", "starlette", "xgrammar",
+    # vllm-ascend pins arctic-inference, published only as an sdist whose build
+    # environment requires torch==2.7.0; vllm_ascend imports it from the
+    # kv-transfer path only.
+    "arctic-inference",
     "torch_musa", "deep_ep",
     "flash_attn_3", "flash_mla", "deep-gemm", "sageattention",
 ]
-no-build-isolation-package = ["vllm-musa"]
+no-build-isolation-package = ["vllm-musa", "vllm-ascend"]
 
 [tool.uv.sources]
 aiter-dtk = { path = "tools/aiter_wrapper" }
+vllm-ascend = { path = "tools/vllm_ascend_wrapper" }
 vllm-musa = { path = "tools/vllm_musa_wrapper" }
 tilelang-musa = { index = "mthreads" }
 apache-tvm-ffi = { index = "mthreads" }

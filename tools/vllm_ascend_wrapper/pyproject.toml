@@ -1,0 +1,19 @@
+[build-system]
+requires = [
+    "cmake>=3.26",
+    "pybind11",
+    "setuptools>=64",
+    "setuptools-scm>=8",
+    "wheel",
+]
+build-backend = "vllm_ascend_wrapper"
+backend-path = ["."]
+
+[project]
+name = "vllm-ascend"
+version = "0.32.0rc1"
+description = "vllm-ascend built from the vendor sources for the running interpreter"
+# The requirements live next to the build in REQUIRES; declaring them dynamic is
+# what makes the resolver ask this backend for them. Static metadata would leave
+# uv with an empty dependency set, and the vendor build imports some of these.
+dynamic = ["dependencies"]
