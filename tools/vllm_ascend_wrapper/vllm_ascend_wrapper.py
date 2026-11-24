@@ -38,7 +38,13 @@ CATLASS_REVISION = "41bf90da655bba3c66d0acd7e00abe33960ecfd6"
 # a checkout under ``~/.cache`` installs them to ``.../root/.cache/...`` and the
 # lookup then finds nothing.
 CHECKOUT = pathlib.Path("~/flaggems/src/vllm-ascend").expanduser()
-BUILD_PREREQS = {"attr": "attrs", "decorator": "decorator"}
+BUILD_PREREQS = {
+    "attr": "attrs",
+    "decorator": "decorator",
+    "pybind11": "pybind11",
+    "setuptools_scm": "setuptools-scm>=8",
+    "wheel": "wheel",
+}
 PYPI_INDEX_URL = "https://resource.flagos.net/repository/pypi-proxy/simple"
 TORCH_GATE = """# check torch version is 2.10.0
 if(NOT ${TORCH_VERSION} VERSION_EQUAL "2.10.0")
