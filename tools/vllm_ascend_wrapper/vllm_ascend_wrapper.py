@@ -79,13 +79,15 @@ def _log(message: str) -> None:
     print(f"vllm-ascend: {message}", file=sys.stderr, flush=True)
 
 
-def _run(command: list[str], cwd: pathlib.Path | None = None) -> None:
+def _run(
+    command: list[str], cwd: pathlib.Path | None = None, env: dict | None = None
+) -> None:
     _log(" ".join(command))
     subprocess.run(
         command,
         cwd=cwd,
         check=True,
-        env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
+        env={**(env or os.environ), "GIT_TERMINAL_PROMPT": "0"},
     )
 
 
@@ -208,6 +210,7 @@ def _vendor_wheel(source: pathlib.Path) -> pathlib.Path:
     _run(
         [sys.executable, "-u", "setup.py", "bdist_wheel", "--dist-dir", str(output)],
         cwd=source,
+        env=env,
     )
     wheels = sorted(output.glob("*.whl"))
     if not wheels:
