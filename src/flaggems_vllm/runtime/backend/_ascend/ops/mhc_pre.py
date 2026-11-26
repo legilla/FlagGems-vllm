@@ -370,7 +370,6 @@ _TLE_MIX_BLOCK_T = 256
 # BLOCK_D=256 that looked like "tokens >= 640 never written"), or silently
 # miscompute.  With a clean cache every configuration above is correct.
 _TLE_REDUCE_BLOCK_T = 16
-_TLE_REDUCE_BLOCK_T_SHORT = 32
 _TLE_REDUCE_BLOCK_D = 256
 
 # id -> (weakref to fn, fn._version, fn.data_ptr(), padded bt). Keyed by id():
@@ -389,15 +388,6 @@ def _tle_mix_block_t(num_tokens: int) -> int:
     """Tokens per mix program: wide tiles for long sequences, more for short."""
     want = triton.next_power_of_2(max(1, (num_tokens + 15) // 16))
     return max(32, min(_TLE_MIX_BLOCK_T, want))
-
-
-def _tle_reduce_block_t(num_tokens: int) -> int:
-    """Token block for the reduce stage, which now walks the hidden axis.
-
-    Large token counts need the occupancy smaller UB tiles buy; short
-    sequences already have few token blocks, so keep those larger.
-    """
-    return _TLE_REDUCE_BLOCK_T_SHORT if num_tokens <= 1024 else _TLE_REDUCE_BLOCK_T
 
 
 def _build_bt_padded(fn: torch.Tensor) -> torch.Tensor:
@@ -925,7 +915,7 @@ def _mhc_pre_tle_4(
         hin_out = torch.empty(
             num_tokens, hidden_size, dtype=torch.bfloat16, device=device
         )
-    reduce_block_t = _tle_reduce_block_t(num_tokens)
+    reduce_block_t = _TLE_REDUCE_BLOCK_T
     mhc_pre_ascend_tle_reduce_kernel[(triton.cdiv(num_tokens, reduce_block_t),)](
         pre_t,
         residual_flat,
